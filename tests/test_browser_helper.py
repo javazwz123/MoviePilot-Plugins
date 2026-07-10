@@ -7,7 +7,7 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 
-PLUGIN_DIR = Path(__file__).resolve().parents[1] / "plugins" / "nodeseeksign"
+PLUGIN_DIR = Path(__file__).resolve().parents[1] / "plugins.v2" / "nodeseeksign"
 sys.path.insert(0, str(PLUGIN_DIR))
 
 from browser_helper import NodeSeekBrowserClient, NodeSeekBrowserError  # noqa: E402

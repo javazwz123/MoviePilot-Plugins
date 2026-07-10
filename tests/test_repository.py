@@ -11,19 +11,25 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class RepositoryStructureTest(unittest.TestCase):
     def test_manifest_matches_source(self):
-        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-        metadata = package["nodeseeksign"]
-        source_path = ROOT / "plugins" / "nodeseeksign" / "__init__.py"
+        base_package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        package = json.loads((ROOT / "package.v2.json").read_text(encoding="utf-8"))
+        plugin_id = "nodeseeksign"
+        metadata = package[plugin_id]
+        source_path = ROOT / "plugins.v2" / plugin_id.lower() / "__init__.py"
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         versions = []
+        class_names = []
         for class_node in (node for node in tree.body if isinstance(node, ast.ClassDef)):
+            class_names.append(class_node.name)
             for node in class_node.body:
                 if not isinstance(node, ast.Assign):
                     continue
                 if any(isinstance(target, ast.Name) and target.id == "plugin_version" for target in node.targets):
                     versions.append(ast.literal_eval(node.value))
+        self.assertEqual(base_package, {})
+        self.assertEqual(class_names, [plugin_id])
+        self.assertEqual(source_path.parent.name, plugin_id.lower())
         self.assertEqual(versions, [metadata["version"]])
-        self.assertTrue(metadata["v2"])
         self.assertTrue(metadata["release"])
         self.assertEqual(metadata["system_version"], ">=2.12.0,<3")
 

@@ -1,6 +1,6 @@
 # NodeSeek论坛签到
 
-适用于 MoviePilot V2 的 NodeSeek 自动签到插件。插件通过 MoviePilot 内置 CloakBrowser 打开签到页，并在同源页面上下文中调用官方签到接口。
+适用于 MoviePilot V2 的 NodeSeek 自动签到插件，插件 ID 为 `nodeseeksign`。插件通过 MoviePilot 内置 CloakBrowser 打开签到页，并在同源页面上下文中调用官方签到接口。
 
 ## 配置
 
@@ -9,7 +9,7 @@
 | 启用插件 | 注册定时签到服务 | 关闭 |
 | 签到通知 | 发送签到结果通知 | 开启 |
 | 随机奖励 | 开启为“试试手气”，关闭为固定 5 个鸡腿 | 开启 |
-| 使用系统代理 | 使用 MoviePilot 的 `PROXY_HOST` | 关闭 |
+| 使用系统代理 | 使用 MoviePilot 的系统代理 | 关闭 |
 | 立即运行一次 | 保存配置后执行一次，不受当日去重限制 | 关闭 |
 | Cookie | NodeSeek 登录 Cookie | 空 |
 | User-Agent | 可选；存在 `cf_clearance` 时建议与 Cookie 来源浏览器一致 | 空 |
@@ -33,7 +33,7 @@
 - `Cookie 已失效`：重新登录 NodeSeek 后更新 Cookie。
 - 页面被拦截或返回 403：确认 MoviePilot 已升级至支持 CloakBrowser 的版本；必要时配置可用代理及对应 User-Agent。
 - `CloakBrowser 运行环境不可用`：检查 MoviePilot 版本和健康检查，不要在插件目录单独安装或降级浏览器依赖。
-- 重复来源冲突：从第三方仓库列表移除旧的同名插件来源，只保留本仓库。
+- 重复来源冲突：从第三方仓库列表移除旧的同 ID 插件来源，只保留本仓库。
 
 ## 数据安全
 

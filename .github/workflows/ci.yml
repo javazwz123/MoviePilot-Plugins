@@ -22,6 +22,7 @@ jobs:
       - name: Validate
         run: |
           python -m json.tool package.json >/dev/null
-          python -m compileall -q plugins
+          python -m json.tool package.v2.json >/dev/null
+          python -m compileall -q plugins.v2
           python -m unittest discover -s tests -v
-          python scripts/check_plugin_versions.py package.json
+          python scripts/check_plugin_versions.py package.json package.v2.json

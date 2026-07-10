@@ -23,11 +23,22 @@ def plugin_version(init_file: Path) -> str | None:
     return None
 
 
+def plugin_class_names(init_file: Path) -> set[str]:
+    tree = ast.parse(init_file.read_text(encoding="utf-8"), filename=str(init_file))
+    return {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
+
+
+def plugin_root(package_file: Path) -> Path:
+    if package_file.name == "package.v2.json":
+        return package_file.parent / "plugins.v2"
+    return package_file.parent / "plugins"
+
+
 def check(package_file: Path) -> list[str]:
     errors: list[str] = []
     package = json.loads(package_file.read_text(encoding="utf-8"))
-    if not isinstance(package, dict) or not package:
-        return [f"{package_file}: 插件索引不能为空"]
+    if not isinstance(package, dict):
+        return [f"{package_file}: 插件索引必须是对象"]
 
     for plugin_id, metadata in package.items():
         if not isinstance(metadata, dict):
@@ -36,17 +47,19 @@ def check(package_file: Path) -> list[str]:
         missing = sorted(REQUIRED_FIELDS - metadata.keys())
         if missing:
             errors.append(f"{plugin_id}: 缺少字段 {', '.join(missing)}")
-        plugin_dir = package_file.parent / "plugins" / plugin_id.lower()
+        plugin_dir = plugin_root(package_file) / plugin_id.lower()
         init_file = plugin_dir / "__init__.py"
         if not init_file.is_file():
             errors.append(f"{plugin_id}: 缺少 {init_file}")
             continue
+        if plugin_id not in plugin_class_names(init_file):
+            errors.append(f"{plugin_id}: {init_file} 中缺少同名插件主类")
         source_version = plugin_version(init_file)
         if source_version != str(metadata.get("version") or ""):
             errors.append(
                 f"{plugin_id}: package 版本 {metadata.get('version')} 与 plugin_version {source_version} 不一致"
             )
-        if metadata.get("v2") is not True:
+        if package_file.name == "package.json" and metadata.get("v2") is not True:
             errors.append(f"{plugin_id}: V2 兼容插件必须声明 v2=true")
         if metadata.get("release") is not True:
             errors.append(f"{plugin_id}: 自动发布插件必须声明 release=true")

@@ -3,7 +3,9 @@ name: Plugin Release
 on:
   push:
     branches: [main]
-    paths: [package.json]
+    paths:
+      - package.json
+      - package.v2.json
   workflow_dispatch:
 
 permissions:
@@ -25,9 +27,9 @@ jobs:
 
       - name: Validate
         run: |
-          python -m compileall -q plugins
+          python -m compileall -q plugins.v2
           python -m unittest discover -s tests -v
-          python scripts/check_plugin_versions.py package.json
+          python scripts/check_plugin_versions.py package.json package.v2.json
 
       - name: Package and publish
         env:
@@ -35,16 +37,17 @@ jobs:
         run: |
           set -euo pipefail
           plugin_id="nodeseeksign"
-          version="$(python -c 'import json; print(json.load(open("package.json"))["nodeseeksign"]["version"])')"
+          plugin_dir="nodeseeksign"
+          version="$(python -c 'import json; print(json.load(open("package.v2.json"))["nodeseeksign"]["version"])')"
           tag="${plugin_id}_v${version}"
-          asset="${plugin_id}_v${version}.zip"
-          notes="$(python -c 'import json; d=json.load(open("package.json"))["nodeseeksign"]; print(d.get("history", {}).get("v" + d["version"], "Plugin release"))')"
+          asset="${plugin_dir}_v${version}.zip"
+          notes="$(python -c 'import json; d=json.load(open("package.v2.json"))["nodeseeksign"]; print(d.get("history", {}).get("v" + d["version"], "Plugin release"))')"
 
-          (cd plugins && zip -r "../${asset}" "${plugin_id}" -x '*/__pycache__/*' '*.pyc') >/dev/null
+          (cd plugins.v2 && zip -r "../${asset}" "${plugin_dir}" -x '*/__pycache__/*' '*.pyc') >/dev/null
 
           if gh release view "${tag}" >/dev/null 2>&1; then
             gh release upload "${tag}" "${asset}" --clobber
             gh release edit "${tag}" --notes "${notes}" --latest
           else
-            gh release create "${tag}" "${asset}" --title "${tag}" --notes "${notes}" --latest
+            gh release create "${tag}" "${asset}" --title "${tag}" --notes "${notes}" --latest --target "${GITHUB_SHA}"
           fi
