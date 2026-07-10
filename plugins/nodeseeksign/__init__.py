@@ -2,12 +2,8 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
-
-import pytz
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
 from app.log import logger
@@ -15,6 +11,9 @@ from app.plugins import _PluginBase
 from app.schemas.types import NotificationType
 
 from .browser_helper import NodeSeekBrowserClient, NodeSeekBrowserError
+
+
+BEIJING_TIMEZONE = timezone(timedelta(hours=8), "Asia/Shanghai")
 
 
 class nodeseeksign(_PluginBase):
@@ -45,7 +44,7 @@ class nodeseeksign(_PluginBase):
     _retry_interval = 30
     _history_days = 30
     _clear_history = False
-    _scheduler: Optional[BackgroundScheduler] = None
+    _scheduler: Optional[threading.Timer] = None
     _run_lock: Optional[threading.Lock] = None
 
     _DEFAULT_CONFIG = {
@@ -73,7 +72,7 @@ class nodeseeksign(_PluginBase):
 
     @staticmethod
     def _now() -> datetime:
-        return datetime.now(pytz.timezone("Asia/Shanghai"))
+        return datetime.now(BEIJING_TIMEZONE)
 
     def init_plugin(self, config: dict = None):
         self.stop_service()
@@ -112,14 +111,8 @@ class nodeseeksign(_PluginBase):
             self._save_config()
 
         if run_once:
-            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-            self._scheduler.add_job(
-                func=self.sign,
-                trigger="date",
-                run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
-                kwargs={"force": True},
-                name="NodeSeek论坛立即签到",
-            )
+            self._scheduler = threading.Timer(3.0, self.sign, kwargs={"force": True})
+            self._scheduler.daemon = True
             self._scheduler.start()
 
         logger.info(
@@ -270,12 +263,12 @@ class nodeseeksign(_PluginBase):
         try:
             parsed = datetime.fromisoformat(value)
             if parsed.tzinfo is None:
-                parsed = pytz.timezone("Asia/Shanghai").localize(parsed)
+                parsed = parsed.replace(tzinfo=BEIJING_TIMEZONE)
             return parsed
         except ValueError:
             try:
                 parsed = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
-                return pytz.timezone("Asia/Shanghai").localize(parsed)
+                return parsed.replace(tzinfo=BEIJING_TIMEZONE)
             except ValueError:
                 return None
 
@@ -318,8 +311,10 @@ class nodeseeksign(_PluginBase):
         if not self._enabled or not self._cron:
             return []
         try:
+            from apscheduler.triggers.cron import CronTrigger
+
             trigger = CronTrigger.from_crontab(self._cron, timezone=settings.TZ)
-        except (TypeError, ValueError) as error:
+        except (ImportError, TypeError, ValueError) as error:
             logger.error("NodeSeek签到 Cron 表达式无效：%s", error)
             return []
         return [
@@ -496,9 +491,7 @@ class nodeseeksign(_PluginBase):
     def stop_service(self):
         if self._scheduler:
             try:
-                self._scheduler.remove_all_jobs()
-                if self._scheduler.running:
-                    self._scheduler.shutdown(wait=False)
+                self._scheduler.cancel()
             except Exception as error:
                 logger.warning("停止 NodeSeek 临时调度器失败：%s", error)
             finally:

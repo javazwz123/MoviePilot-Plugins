@@ -35,7 +35,12 @@ class RepositoryStructureTest(unittest.TestCase):
             "Cookie" + ":",
         )
         for path in ROOT.rglob("*"):
-            if not path.is_file() or ".git" in path.parts or path.suffix in {".png", ".ico"}:
+            if (
+                not path.is_file()
+                or ".git" in path.parts
+                or "__pycache__" in path.parts
+                or path.suffix in {".pyc", ".png", ".ico"}
+            ):
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
             for marker in forbidden:
