@@ -53,6 +53,26 @@ class FakeContext:
         self.closed = True
 
 
+def patched_browser_modules(launch_context):
+    cloakbrowser = ModuleType("cloakbrowser")
+    cloakbrowser.launch_context = launch_context
+
+    app = ModuleType("app")
+    core = ModuleType("app.core")
+    config = ModuleType("app.core.config")
+    config.settings = SimpleNamespace(
+        CLOAKBROWSER_HUMANIZE=True,
+        CLOAKBROWSER_HUMAN_PRESET="default",
+        PROXY_SERVER={"server": "http://127.0.0.1:7890"},
+    )
+    return {
+        "app": app,
+        "app.core": core,
+        "app.core.config": config,
+        "cloakbrowser": cloakbrowser,
+    }
+
+
 class BrowserHelperTest(unittest.TestCase):
     def test_cookie_parser_preserves_equals_in_value(self):
         cookies = NodeSeekBrowserClient.parse_cookie_header("session=abc==; theme=dark")
@@ -137,31 +157,13 @@ class BrowserHelperTest(unittest.TestCase):
         context = FakeContext(payload)
         launch_options = {}
 
-        cloakbrowser = ModuleType("cloakbrowser")
-
         def launch_context(**kwargs):
             launch_options.update(kwargs)
             return context
 
-        cloakbrowser.launch_context = launch_context
-
-        app = ModuleType("app")
-        core = ModuleType("app.core")
-        config = ModuleType("app.core.config")
-        config.settings = SimpleNamespace(
-            CLOAKBROWSER_HUMANIZE=True,
-            CLOAKBROWSER_HUMAN_PRESET="default",
-            PROXY_SERVER={"server": "http://127.0.0.1:7890"},
-        )
-
         with patch.dict(
             sys.modules,
-            {
-                "app": app,
-                "app.core": core,
-                "app.core.config": config,
-                "cloakbrowser": cloakbrowser,
-            },
+            patched_browser_modules(launch_context),
         ):
             result = NodeSeekBrowserClient(
                 "session=secret; " + "cf_clearance" + "=clearance",
@@ -179,6 +181,61 @@ class BrowserHelperTest(unittest.TestCase):
             ],
         )
         self.assertTrue(context.page.closed)
+        self.assertTrue(context.closed)
+
+    def test_navigation_error_keeps_stage_and_is_retryable(self):
+        context = FakeContext({})
+
+        def goto(_url, **_kwargs):
+            raise RuntimeError("Page.goto: net::ERR_CONNECTION_RESET")
+
+        context.page.goto = goto
+        with patch.dict(sys.modules, patched_browser_modules(lambda **_kwargs: context)):
+            with self.assertRaises(NodeSeekBrowserError) as raised:
+                NodeSeekBrowserClient("session=secret-value").sign(random_choice=False)
+
+        self.assertEqual(
+            str(raised.exception),
+            "打开 NodeSeek失败: Page.goto: net::ERR_CONNECTION_RESET",
+        )
+        self.assertTrue(raised.exception.retryable)
+        self.assertTrue(context.page.closed)
+        self.assertTrue(context.closed)
+
+    def test_browser_install_error_is_not_retryable(self):
+        def launch_context(**_kwargs):
+            raise RuntimeError("BrowserType.launch: Executable doesn't exist at /cache/chromium")
+
+        with patch.dict(sys.modules, patched_browser_modules(launch_context)):
+            with self.assertRaises(NodeSeekBrowserError) as raised:
+                NodeSeekBrowserClient("session=secret-value").sign(random_choice=False)
+
+        self.assertIn("启动浏览器失败", str(raised.exception))
+        self.assertFalse(raised.exception.retryable)
+
+    def test_error_detail_redacts_cookie_values_and_headers(self):
+        context = FakeContext({})
+        clearance = "cf_clearance"
+        cookie_header = "Cookie" + ":"
+
+        def add_cookies(_cookies):
+            raise RuntimeError(
+                f"invalid cookie session=secret-value; {clearance}=clearance-value\n"
+                f"{cookie_header} session=secret-value; {clearance}=clearance-value"
+            )
+
+        context.add_cookies = add_cookies
+        with patch.dict(sys.modules, patched_browser_modules(lambda **_kwargs: context)):
+            with self.assertRaises(NodeSeekBrowserError) as raised:
+                NodeSeekBrowserClient(
+                    f"session=secret-value; {clearance}=clearance-value"
+                ).sign(random_choice=False)
+
+        message = str(raised.exception)
+        self.assertIn("注入 Cookie失败", message)
+        self.assertNotIn("secret-value", message)
+        self.assertNotIn("clearance-value", message)
+        self.assertTrue(raised.exception.retryable)
         self.assertTrue(context.closed)
 
 

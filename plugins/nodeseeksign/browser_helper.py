@@ -160,6 +160,58 @@ async (randomChoice) => {
         return re.sub(r"\s+", " ", text).strip()[:240]
 
     @classmethod
+    def _safe_error_detail(cls, error: Exception, cookies: List[Dict[str, str]]) -> str:
+        """Keep useful browser diagnostics without exposing configured credentials."""
+        detail = str(error or "").replace("\x00", " ")
+        cookie_source = ""
+        if cookies:
+            cookie_source = "; ".join(f"{item['name']}={item['value']}" for item in cookies)
+        if cookie_source:
+            detail = detail.replace(cookie_source, "[Cookie 已脱敏]")
+
+        for item in cookies:
+            name = re.escape(item["name"])
+            detail = re.sub(
+                rf"(?i)(?<![\w-])({name})\s*=\s*[^;\s,]+",
+                rf"\1=[已脱敏]",
+                detail,
+            )
+            value = item["value"]
+            if len(value) >= 4:
+                detail = detail.replace(value, "[已脱敏]")
+
+        detail = re.sub(
+            r"(?i)\b(cookie|set-cookie|authorization|proxy-authorization)\s*:\s*[^\r\n]+",
+            r"\1: [已脱敏]",
+            detail,
+        )
+        detail = re.sub(
+            r"(?i)([?&](?:token|access_token|api_key|key|auth|session)=)[^&#\s]+",
+            r"\1[已脱敏]",
+            detail,
+        )
+        return cls._clean_message(detail, type(error).__name__)
+
+    @staticmethod
+    def _is_environment_error(stage: str, detail: str) -> bool:
+        if stage != "启动浏览器":
+            return False
+        normalized = detail.lower()
+        return any(
+            marker in normalized
+            for marker in (
+                "executable doesn't exist",
+                "executable does not exist",
+                "failed to launch browser",
+                "host system is missing dependencies",
+                "permission denied",
+                "operation not permitted",
+                "no such file or directory",
+                "eacces",
+            )
+        )
+
+    @classmethod
     def normalize_payload(cls, payload: Any) -> Dict[str, Any]:
         if not isinstance(payload, dict):
             return {
@@ -251,8 +303,10 @@ async (randomChoice) => {
 
         context: Optional[Any] = None
         page: Optional[Any] = None
+        stage = "启动浏览器"
         try:
             context = launch_context(**launch_options)
+            stage = "注入 Cookie"
             context.add_cookies(
                 [
                     {
@@ -263,20 +317,26 @@ async (randomChoice) => {
                     for item in cookies
                 ]
             )
+            stage = "创建页面"
             page = context.new_page()
             page.set_default_timeout(self._timeout * 1000)
+            stage = "打开 NodeSeek"
             page.goto(self.BOARD_URL, wait_until="domcontentloaded", timeout=self._timeout * 1000)
             try:
                 page.wait_for_load_state("networkidle", timeout=min(self._timeout, 20) * 1000)
             except Exception:
                 logger.debug("NodeSeek page did not reach networkidle; continuing after DOM load")
+            stage = "执行签到脚本"
             payload = page.evaluate(self._PAGE_SCRIPT, bool(random_choice))
             return self.normalize_payload(payload)
         except NodeSeekBrowserError:
             raise
         except Exception as error:
-            logger.error("NodeSeek browser execution failed: %s", type(error).__name__)
-            raise NodeSeekBrowserError(f"浏览器执行失败: {type(error).__name__}") from error
+            detail = self._safe_error_detail(error, cookies)
+            message = f"{stage}失败: {detail}"
+            retryable = not self._is_environment_error(stage, detail)
+            logger.error("NodeSeek浏览器执行失败：%s", message)
+            raise NodeSeekBrowserError(message, retryable=retryable) from error
         finally:
             if page is not None:
                 try:
