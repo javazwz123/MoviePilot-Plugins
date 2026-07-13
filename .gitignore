@@ -15,7 +15,6 @@ env/
 .env.*
 *.log
 plugins/*/history.json
-plugins.v2/*/history.json
 agent.md
 
 # Editors and operating systems

@@ -10,12 +10,26 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepositoryStructureTest(unittest.TestCase):
-    def test_manifest_matches_source(self):
+    def test_v2_fallback_resolves_to_plugins_directory(self):
+        plugin_id = "nodeseeksign"
         base_package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-        package = json.loads((ROOT / "package.v2.json").read_text(encoding="utf-8"))
+        v2_package_path = ROOT / "package.v2.json"
+        v2_package = json.loads(v2_package_path.read_text(encoding="utf-8")) if v2_package_path.exists() else {}
+
+        package_version = "v2" if plugin_id in v2_package else None
+        if package_version is None and base_package.get(plugin_id, {}).get("v2") is True:
+            package_version = ""
+
+        self.assertEqual(package_version, "")
+        self.assertFalse(v2_package_path.exists())
+        self.assertFalse((ROOT / "plugins.v2").exists())
+        self.assertTrue((ROOT / "plugins" / plugin_id / "__init__.py").is_file())
+
+    def test_manifest_matches_source(self):
+        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
         plugin_id = "nodeseeksign"
         metadata = package[plugin_id]
-        source_path = ROOT / "plugins.v2" / plugin_id.lower() / "__init__.py"
+        source_path = ROOT / "plugins" / plugin_id.lower() / "__init__.py"
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         versions = []
         class_names = []
@@ -26,10 +40,10 @@ class RepositoryStructureTest(unittest.TestCase):
                     continue
                 if any(isinstance(target, ast.Name) and target.id == "plugin_version" for target in node.targets):
                     versions.append(ast.literal_eval(node.value))
-        self.assertEqual(base_package, {})
         self.assertEqual(class_names, [plugin_id])
         self.assertEqual(source_path.parent.name, plugin_id.lower())
         self.assertEqual(versions, [metadata["version"]])
+        self.assertTrue(metadata["v2"])
         self.assertTrue(metadata["release"])
         self.assertEqual(metadata["system_version"], ">=2.12.0,<3")
 

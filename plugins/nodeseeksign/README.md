@@ -1,6 +1,6 @@
 # NodeSeek论坛签到
 
-适用于 MoviePilot V2 的 NodeSeek 自动签到插件，插件 ID 为 `nodeseeksign`。插件通过 MoviePilot 内置 CloakBrowser 打开签到页，并在同源页面上下文中调用官方签到接口。
+适用于 MoviePilot V2 的 NodeSeek 自动签到插件，源码位于 `plugins/nodeseeksign/`，插件 ID 为 `nodeseeksign`。插件通过 MoviePilot 内置 CloakBrowser 打开签到页，并在同源页面上下文中调用官方签到接口。
 
 ## 配置
 
