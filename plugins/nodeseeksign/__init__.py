@@ -23,7 +23,7 @@ class nodeseeksign(_PluginBase):
     plugin_name = "NodeSeek论坛签到"
     plugin_desc = "使用 CloakBrowser 在真实浏览器上下文中完成 NodeSeek 每日签到"
     plugin_icon = "https://raw.githubusercontent.com/javazwz123/MoviePilot-Plugins/main/icons/nodeseeksign.png"
-    plugin_version = "3.0.3"
+    plugin_version = "3.0.4"
     plugin_author = "javazwz123"
     author_url = "https://github.com/javazwz123"
     plugin_config_prefix = "nodeseeksign_"

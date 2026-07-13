@@ -19,7 +19,7 @@ class NodeSeekBrowserError(RuntimeError):
 
 class NodeSeekBrowserClient:
     BASE_URL = "https://www.nodeseek.com"
-    BOARD_URL = f"{BASE_URL}/board"
+    LANDING_URL = f"{BASE_URL}/"
 
     _PAGE_SCRIPT = r"""
 async (randomChoice) => {
@@ -56,25 +56,14 @@ async (randomChoice) => {
     };
 
     try {
-        for (let index = 0; index < 20 && !window.__config__; index += 1) {
-            await sleep(250);
-        }
-        if (!window.__config__) {
-            return {
-                code: "PAGE_BLOCKED",
-                loggedIn: null,
-                message: "NodeSeek 页面未正常加载，可能被挑战页或访问策略拦截"
-            };
-        }
-        if (!window.__config__.user) {
+        const before = await getBoard();
+        if (before.status === 401) {
             return {
                 code: "AUTH_REQUIRED",
                 loggedIn: false,
                 message: "未检测到登录用户，Cookie 可能已失效"
             };
         }
-
-        const before = await getBoard();
         if (before.data?.record) {
             return {
                 code: "ALREADY_COMPLETED",
@@ -111,7 +100,7 @@ async (randomChoice) => {
     } catch (error) {
         return {
             code: "BROWSER_REQUEST_ERROR",
-            loggedIn: Boolean(window.__config__?.user),
+            loggedIn: null,
             message: String(error?.message || error || "浏览器请求失败").slice(0, 200)
         };
     }
@@ -221,6 +210,13 @@ async (randomChoice) => {
             }
 
         code = payload.get("code")
+        if code == "BROWSER_REQUEST_ERROR":
+            return {
+                "success": False,
+                "auth_error": False,
+                "retryable": True,
+                "message": cls._clean_message(payload.get("message"), "浏览器请求失败"),
+            }
         if code == "PAGE_BLOCKED":
             return {
                 "success": False,
@@ -306,6 +302,16 @@ async (randomChoice) => {
         stage = "启动浏览器"
         try:
             context = launch_context(**launch_options)
+            stage = "创建页面"
+            page = context.new_page()
+            page.set_default_timeout(self._timeout * 1000)
+            stage = "打开 NodeSeek 首页"
+            page.goto(self.LANDING_URL, wait_until="domcontentloaded", timeout=self._timeout * 1000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=min(self._timeout, 20) * 1000)
+            except Exception:
+                logger.debug("NodeSeek page did not reach networkidle; continuing after DOM load")
+
             stage = "注入 Cookie"
             context.add_cookies(
                 [
@@ -317,15 +323,6 @@ async (randomChoice) => {
                     for item in cookies
                 ]
             )
-            stage = "创建页面"
-            page = context.new_page()
-            page.set_default_timeout(self._timeout * 1000)
-            stage = "打开 NodeSeek"
-            page.goto(self.BOARD_URL, wait_until="domcontentloaded", timeout=self._timeout * 1000)
-            try:
-                page.wait_for_load_state("networkidle", timeout=min(self._timeout, 20) * 1000)
-            except Exception:
-                logger.debug("NodeSeek page did not reach networkidle; continuing after DOM load")
             stage = "执行签到脚本"
             payload = page.evaluate(self._PAGE_SCRIPT, bool(random_choice))
             return self.normalize_payload(payload)

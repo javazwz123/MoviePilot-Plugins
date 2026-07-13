@@ -21,9 +21,9 @@
 
 ## 执行流程
 
-1. 在临时浏览器上下文中按 NodeSeek 域注入 Cookie。
-2. 打开 `/board` 并确认页面识别到登录用户。
-3. 查询 `/api/attendance/board?page=1`，已有当日记录则直接结束。
+1. 在临时浏览器上下文中无 Cookie 打开 NodeSeek 首页，建立干净的同源页面。
+2. 页面建立后按 NodeSeek 域注入 Cookie，不刷新页面。
+3. 查询 `/api/attendance/board?page=1`，确认登录状态；已有当日记录则直接结束。
 4. 未签到时执行 `POST /api/attendance?random=true|false`。
 5. 再次查询签到榜，以服务端记录确认奖励和排名。
 6. 成功后保存当日状态、历史并按配置发送通知。
@@ -33,7 +33,7 @@
 - `Cookie 已失效`：重新登录 NodeSeek 后更新 Cookie。
 - 页面被拦截或返回 403：确认 MoviePilot 已升级至支持 CloakBrowser 的版本；必要时配置可用代理及对应 User-Agent。
 - `CloakBrowser 运行环境不可用`：检查 MoviePilot 版本和健康检查，不要在插件目录单独安装或降级浏览器依赖。
-- `打开 NodeSeek失败: ...ERR_CONNECTION_RESET`：NodeSeek 连接被重置，尝试启用“使用系统代理”，并确认 MoviePilot 的代理可用。
+- `打开 NodeSeek 首页失败: ...ERR_CONNECTION_RESET`：无 Cookie 的首页连接仍被重置，说明失败与登录 Cookie 无关；检查 MoviePilot 容器到 NodeSeek 的实际直连链路或 CloakBrowser 网络环境。
 - `启动浏览器失败: ...Executable doesn't exist`：MoviePilot 浏览器运行文件缺失，检查宿主健康检查与 CloakBrowser 缓存目录权限；此类环境错误不会重复重试。
 - 重复来源冲突：从第三方仓库列表移除旧的同 ID 插件来源，只保留本仓库。
 

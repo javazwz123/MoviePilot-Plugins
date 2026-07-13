@@ -14,16 +14,19 @@ from browser_helper import NodeSeekBrowserClient, NodeSeekBrowserError  # noqa: 
 
 
 class FakePage:
-    def __init__(self, payload):
+    def __init__(self, payload, events=None):
         self.payload = payload
         self.closed = False
         self.goto_call = None
+        self.events = events
 
     def set_default_timeout(self, timeout):
         self.timeout = timeout
 
     def goto(self, url, **kwargs):
         self.goto_call = (url, kwargs)
+        if self.events is not None:
+            self.events.append("goto")
 
     def wait_for_load_state(self, *_args, **_kwargs):
         return None
@@ -39,14 +42,17 @@ class FakePage:
 
 class FakeContext:
     def __init__(self, payload):
-        self.page = FakePage(payload)
+        self.events = []
+        self.page = FakePage(payload, self.events)
         self.cookies = None
         self.closed = False
 
     def add_cookies(self, cookies):
+        self.events.append("add_cookies")
         self.cookies = cookies
 
     def new_page(self):
+        self.events.append("new_page")
         return self.page
 
     def close(self):
@@ -142,6 +148,14 @@ class BrowserHelperTest(unittest.TestCase):
         self.assertFalse(result["auth_error"])
         self.assertTrue(result["retryable"])
 
+    def test_browser_request_error_is_retryable_and_not_an_auth_error(self):
+        result = NodeSeekBrowserClient.normalize_payload(
+            {"code": "BROWSER_REQUEST_ERROR", "loggedIn": None, "message": "Failed to fetch"}
+        )
+        self.assertFalse(result["success"])
+        self.assertFalse(result["auth_error"])
+        self.assertTrue(result["retryable"])
+
     def test_browser_unavailable_error_can_disable_retry(self):
         error = NodeSeekBrowserError("unavailable", retryable=False)
         self.assertFalse(error.retryable)
@@ -173,6 +187,8 @@ class BrowserHelperTest(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(launch_options["proxy"], {"server": "http://127.0.0.1:7890"})
+        self.assertEqual(context.events, ["new_page", "goto", "add_cookies"])
+        self.assertEqual(context.page.goto_call[0], "https://www.nodeseek.com/")
         self.assertEqual(
             context.cookies,
             [
@@ -196,7 +212,7 @@ class BrowserHelperTest(unittest.TestCase):
 
         self.assertEqual(
             str(raised.exception),
-            "打开 NodeSeek失败: Page.goto: net::ERR_CONNECTION_RESET",
+            "打开 NodeSeek 首页失败: Page.goto: net::ERR_CONNECTION_RESET",
         )
         self.assertTrue(raised.exception.retryable)
         self.assertTrue(context.page.closed)
@@ -237,6 +253,7 @@ class BrowserHelperTest(unittest.TestCase):
         self.assertNotIn("clearance-value", message)
         self.assertTrue(raised.exception.retryable)
         self.assertTrue(context.closed)
+        self.assertTrue(context.page.closed)
 
 
 if __name__ == "__main__":
